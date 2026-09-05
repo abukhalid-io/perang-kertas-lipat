@@ -1,0 +1,1084 @@
+<title>Perang Kertas Lipat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --paper: #fffdf8;
+    --ink: #2b2a26;
+    --pencil: #86806f;
+    --accent: #c8434f;
+    --miss: #5a86a8;
+    --panel-bg: rgba(255,253,248,.94);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;overflow:hidden;background:var(--paper);overscroll-behavior:none;}
+  body{ font-family:'Patrick Hand','Comic Sans MS',system-ui,sans-serif; color:var(--ink); }
+  #canvas-root{ position:fixed; inset:0; touch-action:none; }
+  #canvas-root canvas{ display:block; touch-action:none; }
+
+  #hud{ position:fixed; inset:0; pointer-events:none; }
+
+  .side-label{ position:absolute; top:20px; width:50%; display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .side-label.p1{ left:0; }
+  .side-label.p2{ right:0; }
+  .side-name{ font-family:'Permanent Marker',cursive; font-size:21px; letter-spacing:.5px; }
+  .side-label.active .side-name{ color:var(--accent); }
+  .side-stats{ font-family:'Space Mono',monospace; font-size:12.5px; color:var(--pencil); font-variant-numeric: tabular-nums; }
+
+
+  .banner{
+    position:absolute; top:66px; left:50%; transform:translateX(-50%);
+    font-size:16.5px; text-align:center; max-width:560px; padding:7px 20px;
+    background:var(--panel-bg); border-radius:20px; box-shadow:0 3px 14px rgba(43,42,38,.08);
+    transition: color .15s;
+  }
+  .banner.hint{ color:var(--accent); }
+
+  .controls{
+    position:absolute; bottom:64px; top:auto; left:50%; right:auto; transform:translateX(-50%);
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center;
+    max-width:92vw; pointer-events:auto;
+    transition: left .3s ease, right .3s ease, top .3s ease, bottom .3s ease, transform .3s ease;
+  }
+  .controls.side-left{ left:26px; right:auto; top:50%; bottom:auto; transform:translateY(-50%); }
+  .controls.side-right{ left:auto; right:26px; top:50%; bottom:auto; transform:translateY(-50%); }
+  .controls.stacked{ flex-direction:column; gap:12px; }
+
+  .launch-circle{
+    width:66px; height:66px; border-radius:50%; border:none; cursor:pointer;
+    background: radial-gradient(circle at 35% 30%, #e1594f, #ab2f28);
+    color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0px;
+    font-family:'Patrick Hand',sans-serif;
+    box-shadow: 0 6px 14px rgba(150,40,34,.45), inset 0 2px 4px rgba(255,255,255,.3);
+  }
+  .launch-circle:hover{ filter:brightness(1.08); }
+  .launch-circle:active{ transform:translateY(2px); box-shadow:0 3px 9px rgba(150,40,34,.4); }
+  .launch-circle:focus-visible{ outline:3px solid #fff; outline-offset:2px; }
+  .launch-circle .icon{ font-size:19px; line-height:1; }
+  .launch-circle .label{ font-size:9.5px; font-weight:bold; letter-spacing:.04em; text-transform:uppercase; }
+
+  .cancel-link{
+    background:transparent; border:none; cursor:pointer; padding:4px 10px;
+    font-family:'Patrick Hand',sans-serif; font-size:14.5px; color:var(--pencil); text-decoration:underline;
+  }
+  .cancel-link:hover{ color:var(--ink); }
+  .cancel-link:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .stepper{ display:flex; align-items:center; gap:10px; background:var(--panel-bg); border-radius:20px; padding:6px 8px; box-shadow:0 3px 14px rgba(43,42,38,.08); }
+  .stepper-btn{
+    width:30px; height:30px; border-radius:50%; border:1.5px solid var(--pencil); background:transparent;
+    color:var(--ink); font-family:'Space Mono',monospace; font-size:16px; cursor:pointer; line-height:1;
+  }
+  .stepper-btn:hover{ background:#fff; }
+  .stepper-btn:disabled{ opacity:.35; cursor:not-allowed; }
+  .stepper-value{ font-family:'Space Mono',monospace; font-size:17px; min-width:24px; text-align:center; font-variant-numeric: tabular-nums; }
+
+  .btn{
+    font-family:'Patrick Hand',sans-serif; font-size:16.5px;
+    background:var(--ink); color:var(--paper); border:none; border-radius:9px;
+    padding:10px 20px; cursor:pointer; box-shadow:0 3px 0 rgba(43,42,38,.25);
+  }
+  .btn:hover{ filter:brightness(1.12); }
+  .btn:active{ transform:translateY(2px); box-shadow:none; }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .btn.ghost{ background:transparent; color:var(--ink); box-shadow:none; border:1.5px solid var(--pencil); }
+
+  .corner-btn{
+    position:absolute; top:18px; width:30px; height:30px; border-radius:50%;
+    background:var(--panel-bg); border:1.5px solid var(--pencil); color:var(--ink);
+    font-family:'Space Mono',monospace; font-size:14px; cursor:pointer;
+    pointer-events:auto; box-shadow:0 2px 8px rgba(43,42,38,.08);
+  }
+  .corner-btn:hover{ background:#fff; }
+  .corner-btn.help{ left:18px; }
+  .corner-btn.sound{ left:58px; font-size:15px; }
+  .corner-btn.fullscreen{ right:58px; font-size:15px; }
+  .corner-btn.reset{ right:18px; font-size:15px; }
+
+  .config-panel{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:var(--panel-bg); border-radius:14px; padding:22px 24px;
+    box-shadow:0 10px 30px rgba(43,42,38,.16); pointer-events:auto;
+    display:flex; flex-direction:column; gap:14px; width:min(90vw,300px);
+  }
+  .config-panel[hidden]{ display:none; }
+  .config-row{ display:flex; flex-direction:column; gap:5px; }
+  .config-row label{ font-size:12.5px; color:var(--pencil); font-family:'Space Mono',monospace; letter-spacing:.03em; text-transform:uppercase; }
+  .config-row input{
+    font-family:'Patrick Hand',sans-serif; font-size:16.5px; padding:8px 11px;
+    border:1.5px solid var(--pencil); border-radius:8px; background:var(--paper); color:var(--ink);
+  }
+  .config-row input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .config-row.stepper-row{ flex-direction:row; align-items:center; justify-content:space-between; }
+  .config-row.stepper-row span{ font-size:14.5px; color:var(--ink); }
+
+  .rules-panel{
+    position:absolute; top:60px; left:18px; width:270px;
+    background:var(--panel-bg); border-radius:12px; padding:14px 16px;
+    box-shadow:0 8px 24px rgba(43,42,38,.14); pointer-events:auto;
+    font-size:14px; line-height:1.5; color:var(--ink);
+  }
+  .rules-panel[hidden]{ display:none; }
+  .rules-panel h2{ font-family:'Permanent Marker',cursive; font-size:16px; margin:0 0 8px; font-weight:normal; }
+  .rules-panel ol{ margin:0; padding-left:18px; }
+  .rules-panel li{ margin-bottom:6px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+  }
+
+  .rotate-prompt{ display:none; }
+  @media (max-width:900px) and (orientation:portrait){
+    .rotate-prompt{
+      display:flex; position:fixed; inset:0; z-index:9999;
+      background:var(--paper); flex-direction:column; align-items:center; justify-content:center; gap:12px;
+      text-align:center; padding:30px;
+    }
+    .rotate-prompt .icon{ font-size:52px; animation: rotateHint 1.8s ease-in-out infinite; }
+    .rotate-prompt .title{ font-family:'Permanent Marker',cursive; font-size:20px; color:var(--ink); }
+    .rotate-prompt .desc{ font-size:14px; color:var(--pencil); max-width:260px; }
+    #hud, #canvas-root{ visibility:hidden; }
+  }
+  @keyframes rotateHint{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(90deg); } }
+</style>
+
+<div class="rotate-prompt">
+  <div class="icon">📱</div>
+  <div class="title">Putar HP ke mode landscape</div>
+  <div class="desc">Perang Kertas Lipat lebih nyaman dimainkan dengan layar mendatar (miring ke samping).</div>
+</div>
+
+<div id="canvas-root"></div>
+
+<div id="hud">
+  <button class="corner-btn help" id="helpBtn" aria-expanded="false" title="Cara main">?</button>
+  <button class="corner-btn sound" id="soundBtn" title="Suara on/off">🔊</button>
+  <button class="corner-btn fullscreen" id="fsBtn" title="Layar penuh">⛶</button>
+  <button class="corner-btn reset" id="resetBtn" title="Main baru">↺</button>
+
+  <div class="config-panel" id="configPanel" hidden>
+    <div class="config-row">
+      <label for="name1Input">Nama Pemain 1</label>
+      <input type="text" id="name1Input" maxlength="16" placeholder="Pemain 1" autocomplete="off">
+    </div>
+    <div class="config-row">
+      <label for="name2Input">Nama Pemain 2</label>
+      <input type="text" id="name2Input" maxlength="16" placeholder="Pemain 2" autocomplete="off">
+    </div>
+    <div class="config-row stepper-row">
+      <span>Jumlah pasukan</span>
+      <div class="stepper" id="figureStepper"></div>
+    </div>
+    <button class="btn" id="startSetupBtn">Mulai Tempatkan Pasukan ⚔️</button>
+  </div>
+
+  <div class="rules-panel" id="rulesPanel" hidden>
+    <h2>📋 Cara main</h2>
+    <ol>
+      <li>Atur dulu jumlah pasukan (maks 10). Pemain 1 taruh stickman di sisi <strong>kiri</strong>, Pemain 2 di sisi <strong>kanan</strong> — keduanya kelihatan, tidak disembunyikan.</li>
+      <li>Bergantian: klik/ketuk sisimu sendiri untuk membidik titik bom, lalu tekan tombol <strong>🚀 Luncurkan Bom</strong>.</li>
+      <li>Kertas otomatis <strong>terlipat</strong> ke sisi lawan — kalau bom mendarat pas kena stickman, itu <strong>KENA 💥</strong> (1 poin). Meleset 💧 = giliran pindah.</li>
+      <li>Duluan menghabisi semua stickman lawan = menang!</li>
+    </ol>
+  </div>
+
+  <div class="side-label p1" id="label1">
+    <span class="side-name" id="nameLabel1">Pemain 1</span>
+    <span class="side-stats" id="stats1"></span>
+  </div>
+  <div class="side-label p2" id="label2">
+    <span class="side-name" id="nameLabel2">Pemain 2</span>
+    <span class="side-stats" id="stats2"></span>
+  </div>
+
+  <div class="banner" id="banner"></div>
+  <div class="controls" id="controls"></div>
+</div>
+
+<script>
+(function(){
+  if(typeof THREE === 'undefined'){
+    document.getElementById('canvas-root').innerHTML =
+      '<p style="padding:40px;font-family:sans-serif;color:#c8434f">Gagal memuat mesin 3D (Three.js). Coba muat ulang halaman.</p>';
+    return;
+  }
+
+  const MIN_MAX_FIGURES = 3, MAX_MAX_FIGURES = 10, DEFAULT_FIGURES = 5;
+  const HIT_RADIUS = 0.32;
+  const HALF_W = 13, PAPER_H = 15;
+  const PAD = 1.2, MIN_SPACING = 1.1;
+
+  /* ---------------- three.js setup ---------------- */
+  const root = document.getElementById('canvas-root');
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1,1,1,-1,0.1,100);
+  camera.position.set(0,0,12);
+  camera.lookAt(0,0,0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setClearColor(0xf1efe4, 1);
+  root.appendChild(renderer.domElement);
+
+  function fitCamera(){
+    const w = root.clientWidth || window.innerWidth;
+    const h = root.clientHeight || window.innerHeight;
+    if(w<2 || h<2) return;
+    renderer.setSize(w,h);
+    const paperAspect = (HALF_W*2)/PAPER_H;
+    const viewAspect = w/h;
+    const margin = 1.03;
+    let halfW, halfH;
+    if(viewAspect > paperAspect){ halfH = (PAPER_H/2)*margin; halfW = halfH*viewAspect; }
+    else { halfW = (HALF_W)*margin; halfH = halfW/viewAspect; }
+    camera.left=-halfW; camera.right=halfW; camera.top=halfH; camera.bottom=-halfH;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', fitCamera);
+  if(window.ResizeObserver){ new ResizeObserver(fitCamera).observe(root); }
+
+  // lighting
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const key = new THREE.DirectionalLight(0xffffff, 0.55); key.position.set(3,5,8); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-4,-2,5); scene.add(fill);
+
+  // backdrop
+  const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(200,140), new THREE.MeshBasicMaterial({color:0xece9db}));
+  backdrop.position.z = -0.4;
+  scene.add(backdrop);
+
+  // paper panels — subdivided along the fold axis so they can flex, not just rotate as a rigid card
+  function makePanel(sideSign){
+    const geo = new THREE.PlaneGeometry(HALF_W, PAPER_H, 18, 1);
+    const mat = new THREE.MeshStandardMaterial({ color:0xfffdf8, roughness:0.95, metalness:0, side:THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(sideSign*HALF_W/2, 0, 0);
+    const pos = geo.attributes.position;
+    const hingeDist = new Float32Array(pos.count);
+    const origZ = new Float32Array(pos.count);
+    for(let i=0;i<pos.count;i++){
+      const groupX = mesh.position.x + pos.getX(i); // this vertex's x once parented into the fold group
+      hingeDist[i] = Math.min(1, Math.abs(groupX)/HALF_W); // 0 at the crease, 1 at the outer edge
+      origZ[i] = pos.getZ(i);
+    }
+    mesh.userData.hingeDist = hingeDist;
+    mesh.userData.origZ = origZ;
+    return mesh;
+  }
+  const leftGroup = new THREE.Group();
+  const rightGroup = new THREE.Group();
+  scene.add(leftGroup, rightGroup);
+  const leftPanelMesh = makePanel(-1);
+  const rightPanelMesh = makePanel(1);
+  leftGroup.add(leftPanelMesh);
+  rightGroup.add(rightPanelMesh);
+
+  // crease
+  const crease = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.07, PAPER_H),
+    new THREE.MeshBasicMaterial({ color:0x2b2a26, transparent:true, opacity:0.16 })
+  );
+  crease.position.set(0,0,0.03);
+  scene.add(crease);
+
+  /* ---------------- textures ---------------- */
+  const ACCESSORIES = ['none','hat','sword','gun'];
+
+  function drawAccessory(ctx, cx, type){
+    if(type==='hat'){
+      ctx.fillStyle = '#4a4640';
+      ctx.beginPath(); ctx.ellipse(cx,16,17,5,0,0,Math.PI*2); ctx.fill();
+      ctx.fillRect(cx-11,4,22,13);
+    } else if(type==='sword'){
+      ctx.strokeStyle = '#9a968a'; ctx.lineWidth=4; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(cx+24,72); ctx.lineTo(cx+52,36); ctx.stroke();
+      ctx.strokeStyle = '#6b4a2a'; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.moveTo(cx+18,78); ctx.lineTo(cx+30,66); ctx.stroke();
+    } else if(type==='gun'){
+      ctx.strokeStyle = '#2b2a26'; ctx.lineWidth=5; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(cx+22,70); ctx.lineTo(cx+56,56); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx+30,67); ctx.lineTo(cx+30,80); ctx.stroke();
+    }
+  }
+
+  function stickFigureTexture(opts){
+    opts = opts || {};
+    const size=128;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    const cx=size/2;
+    ctx.strokeStyle = opts.destroyed ? '#c8434f' : '#2b2a26';
+    ctx.lineWidth=7; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.arc(cx,28,15,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,43); ctx.lineTo(cx,80); ctx.stroke();
+    if(opts.cheer){
+      ctx.beginPath(); ctx.moveTo(cx,50); ctx.lineTo(cx-25,28); ctx.moveTo(cx,50); ctx.lineTo(cx+25,28); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(cx,55); ctx.lineTo(cx-24,72); ctx.moveTo(cx,55); ctx.lineTo(cx+24,72); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(cx,80); ctx.lineTo(cx-19,110); ctx.moveTo(cx,80); ctx.lineTo(cx+19,110); ctx.stroke();
+    if(!opts.destroyed && opts.accessory && opts.accessory!=='none'){
+      drawAccessory(ctx, cx, opts.accessory);
+    }
+    if(opts.destroyed){
+      ctx.strokeStyle='#c8434f'; ctx.lineWidth=9;
+      ctx.beginPath(); ctx.moveTo(14,14); ctx.lineTo(size-14,size-14);
+      ctx.moveTo(size-14,14); ctx.lineTo(14,size-14); ctx.stroke();
+    }
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function bombTexture(){
+    const size=96;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#2b2a26';
+    ctx.beginPath(); ctx.arc(size/2,size/2+8,26,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#2b2a26'; ctx.lineWidth=5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(size/2+12,size/2-18); ctx.quadraticCurveTo(size/2+28,size/2-40,size/2+18,size/2-52); ctx.stroke();
+    ctx.fillStyle='#c8434f';
+    ctx.beginPath(); ctx.arc(size/2+18,size/2-52,6,0,Math.PI*2); ctx.fill();
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function ringTexture(){
+    const size=110;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    const cx=size/2, cy=size/2, r=size*0.42;
+    ctx.strokeStyle='#c8434f';
+    ctx.lineWidth=5;
+    ctx.setLineDash([9,7]);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth=2.5;
+    const tick=8;
+    [0,Math.PI/2,Math.PI,Math.PI*1.5].forEach(a=>{
+      ctx.beginPath();
+      ctx.moveTo(cx+Math.cos(a)*(r-tick), cy+Math.sin(a)*(r-tick));
+      ctx.lineTo(cx+Math.cos(a)*(r+tick), cy+Math.sin(a)*(r+tick));
+      ctx.stroke();
+    });
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function holeTexture(){
+    const size=140;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    const cx=size/2, cy=size/2, N=14, baseR=size*0.27;
+    const pts=[];
+    for(let i=0;i<N;i++){
+      const a=(i/N)*Math.PI*2;
+      const r=baseR*(0.68+Math.random()*0.55);
+      pts.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]);
+    }
+    ctx.beginPath();
+    pts.forEach(([px,py],i)=> i===0?ctx.moveTo(px,py):ctx.lineTo(px,py));
+    ctx.closePath();
+    ctx.lineWidth=14; ctx.strokeStyle='rgba(94,48,22,0.5)'; ctx.stroke();
+    ctx.fillStyle='#14100c'; ctx.fill();
+    for(let i=0;i<6;i++){
+      const [px,py] = pts[(i*2)%N];
+      const ang = Math.atan2(py-cy, px-cx);
+      const len = 10+Math.random()*14;
+      ctx.strokeStyle='rgba(60,32,16,'+(0.25+Math.random()*0.2)+')';
+      ctx.lineWidth=3+Math.random()*2;
+      ctx.beginPath(); ctx.moveTo(px,py);
+      ctx.lineTo(px+Math.cos(ang)*len, py+Math.sin(ang)*len);
+      ctx.stroke();
+    }
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function debrisTexture(){
+    const size=28;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle = Math.random()<0.5 ? '#fffdf8' : '#8a8071';
+    ctx.beginPath();
+    ctx.moveTo(size*0.5,2); ctx.lineTo(size-2,size*0.4);
+    ctx.lineTo(size*0.7,size-2); ctx.lineTo(2,size*0.6);
+    ctx.closePath(); ctx.fill();
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function flashTexture(){
+    const size=128;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    const cx=size/2, cy=size/2;
+    const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,size/2);
+    grad.addColorStop(0,'rgba(255,244,214,0.95)');
+    grad.addColorStop(0.35,'rgba(255,196,120,0.75)');
+    grad.addColorStop(0.7,'rgba(216,90,58,0.35)');
+    grad.addColorStop(1,'rgba(216,90,58,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.arc(cx,cy,size/2,0,Math.PI*2); ctx.fill();
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function spawnExplosionBurst(x,y){
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map:flashTexture(), transparent:true, depthWrite:false }));
+    flash.position.set(x,y,0.15);
+    flash.scale.set(0.2,0.2,1);
+    scene.add(flash);
+    const flashStart = performance.now();
+    (function stepFlash(now){
+      const t = Math.min(1,(now-flashStart)/320);
+      const s = 0.2 + t*2.6;
+      flash.scale.set(s,s,1);
+      flash.material.opacity = 1-t;
+      if(t<1) requestAnimationFrame(stepFlash); else scene.remove(flash);
+    })(flashStart);
+
+    for(let i=0;i<10;i++){
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:debrisTexture(), transparent:true, depthWrite:false }));
+      const sc = 0.14 + Math.random()*0.12;
+      spr.scale.set(sc,sc,1);
+      spr.position.set(x,y,0.12+Math.random()*0.1);
+      scene.add(spr);
+      const ang = Math.random()*Math.PI*2;
+      const speed = 2.4 + Math.random()*3.2;
+      let vx = Math.cos(ang)*speed, vy = Math.sin(ang)*speed;
+      const spin = (Math.random()-0.5)*10;
+      const start = performance.now();
+      const dur = 550 + Math.random()*250;
+      let last = start;
+      (function stepDebris(now){
+        const dt = Math.min(0.05,(now-last)/1000);
+        last = now;
+        vx *= 0.94; vy = vy*0.94 - 6*dt;
+        spr.position.x += vx*dt; spr.position.y += vy*dt;
+        spr.material.rotation += spin*dt;
+        const t = Math.min(1,(now-start)/dur);
+        spr.material.opacity = 1-t;
+        if(t<1) requestAnimationFrame(stepDebris); else scene.remove(spr);
+      })(start);
+    }
+  }
+
+  function microShake(group){
+    const ox=group.position.x, oy=group.position.y;
+    let n=0; const maxN=6;
+    (function step(){
+      n++;
+      const mag = 0.08*(1-n/maxN);
+      group.position.x = ox + (Math.random()-0.5)*mag;
+      group.position.y = oy + (Math.random()-0.5)*mag;
+      if(n<maxN) requestAnimationFrame(step);
+      else { group.position.x=ox; group.position.y=oy; }
+    })();
+  }
+
+  function placeBombImpact(x,y){
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: holeTexture(), transparent:true }));
+    spr.position.set(x,y,0.08);
+    spr.scale.set(0,0,1);
+    scene.add(spr);
+    pop(spr, 0.85, 260);
+    spawnExplosionBurst(x,y);
+    return spr;
+  }
+
+  function celebrate(figures){
+    const survivors = figures.filter(f=>f.alive);
+    survivors.forEach((f,idx)=>{
+      f.mesh.material.map = stickFigureTexture({accessory:f.accessory, cheer:true});
+      f.mesh.material.needsUpdate = true;
+      const owner = state; // capture so the loop stops once resetGame swaps in a fresh state
+      const phaseOffset = idx*0.7;
+      const start = performance.now();
+      function step(now){
+        if(state!==owner || state.phase!=='gameover') return;
+        const t = (now-start)/1000 + phaseOffset;
+        f.mesh.position.y = f.baseY + Math.abs(Math.sin(t*3.6))*0.22;
+        f.mesh.material.rotation = Math.sin(t*3.6)*0.22;
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  const CONFETTI_COLORS = ['#c8434f','#e8c468','#5a86a8','#7a9b6e','#2b2a26','#e2896b'];
+  function confettiTexture(color){
+    const w=18,h=26;
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle=color;
+    ctx.fillRect(0,0,w,h);
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
+  function spawnConfettiBurst(delay){
+    setTimeout(()=>{
+      const owner = state;
+      if(state.phase!=='gameover') return;
+      const left = camera.left, right = camera.right, top = camera.top, bottom = camera.bottom;
+      for(let i=0;i<46;i++){
+        const color = CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)];
+        const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: confettiTexture(color), transparent:true }));
+        const sc = 0.35 + Math.random()*0.35;
+        spr.scale.set(sc*0.6, sc, 1);
+        const startX = left + Math.random()*(right-left);
+        const startY = top + 1 + Math.random()*3;
+        spr.position.set(startX, startY, 0.3+Math.random()*0.2);
+        spr.material.rotation = Math.random()*Math.PI*2;
+        scene.add(spr);
+        const fallSpeed = 2.2 + Math.random()*2.4;
+        const drift = (Math.random()-0.5)*1.6;
+        const spin = (Math.random()-0.5)*6;
+        const swayFreq = 1.5+Math.random()*1.5;
+        const swayAmp = 0.4+Math.random()*0.5;
+        const start = performance.now();
+        let last = start;
+        (function step(now){
+          if(state!==owner){ scene.remove(spr); return; }
+          const dt = Math.min(0.05,(now-last)/1000);
+          last = now;
+          const t = (now-start)/1000;
+          spr.position.y -= fallSpeed*dt;
+          spr.position.x = startX + drift*t + Math.sin(t*swayFreq)*swayAmp;
+          spr.material.rotation += spin*dt;
+          if(spr.position.y < bottom-1){ scene.remove(spr); return; }
+          requestAnimationFrame(step);
+        })(start);
+      }
+    }, delay||0);
+  }
+
+  /* ---------------- animation helpers ---------------- */
+  function easeInOutQuad(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+  function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  function setBend(mesh, amount){
+    const pos = mesh.geometry.attributes.position;
+    const hd = mesh.userData.hingeDist, oz = mesh.userData.origZ;
+    for(let i=0;i<pos.count;i++) pos.setZ(i, oz[i] + amount*hd[i]);
+    pos.needsUpdate = true;
+    mesh.geometry.computeVertexNormals();
+  }
+
+  function animateGroup(group, toRotation, liftPeak, duration, bendMesh){
+    return new Promise(resolve=>{
+      const fromRotation = group.rotation.y;
+      const bendAmp = 0.5;
+      const start = performance.now();
+      function step(now){
+        const raw = Math.min(1,(now-start)/duration);
+        const t = easeInOutQuad(raw);
+        group.rotation.y = fromRotation + (toRotation-fromRotation)*t;
+        group.position.z = Math.sin(raw*Math.PI) * liftPeak;
+        if(bendMesh) setBend(bendMesh, bendAmp*Math.sin(raw*Math.PI));
+        if(raw<1) requestAnimationFrame(step);
+        else {
+          group.rotation.y=toRotation; group.position.z=0;
+          if(bendMesh) setBend(bendMesh, 0);
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function settleBounce(group){
+    return new Promise(resolve=>{
+      const base = group.rotation.y;
+      const amp = 0.05, dur = 260;
+      const start = performance.now();
+      function step(now){
+        const t = Math.min(1,(now-start)/dur);
+        const decay = 1-t;
+        group.rotation.y = base - Math.sin(t*Math.PI*2.2)*amp*decay*decay;
+        if(t<1) requestAnimationFrame(step);
+        else { group.rotation.y=base; resolve(); }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function pop(obj, base, duration){
+    duration = duration || 260;
+    const start = performance.now();
+    function step(now){
+      const t = Math.min(1,(now-start)/duration);
+      const s = t<0.6 ? (t/0.6)*base*1.2 : base*1.2 - ((t-0.6)/0.4)*(base*0.2);
+      obj.scale.set(s,s,1);
+      if(t<1) requestAnimationFrame(step); else obj.scale.set(base,base,1);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderLoop(){ requestAnimationFrame(renderLoop); renderer.render(scene,camera); }
+
+  /* ---------------- sound (synthesized, no audio files) ---------------- */
+  let soundOn = true;
+  let audioCtx = null;
+  function ensureAudio(){
+    if(!audioCtx){
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return null;
+      audioCtx = new Ctx();
+    }
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(freq, duration, type, gain, delay){
+    if(!soundOn) return;
+    const ctx = ensureAudio(); if(!ctx) return;
+    const t0 = ctx.currentTime + (delay||0);
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain==null?0.2:gain, t0+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+duration);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t0); osc.stop(t0+duration+0.03);
+  }
+  function noiseBurst(opts){
+    if(!soundOn) return;
+    const ctx = ensureAudio(); if(!ctx) return;
+    opts = opts || {};
+    const duration = opts.duration || 0.4;
+    const size = Math.max(1, Math.floor(ctx.sampleRate*duration));
+    const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<size;i++) data[i] = (Math.random()*2-1) * (1 - i/size);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = opts.type || 'lowpass';
+    filter.Q.value = opts.q==null?0.7:opts.q;
+    const t0 = ctx.currentTime;
+    filter.frequency.setValueAtTime(opts.freqStart||3000, t0);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(opts.freqEnd||200,20), t0+duration);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(opts.gain==null?0.35:opts.gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+duration);
+    src.connect(filter).connect(g).connect(ctx.destination);
+    src.start(t0);
+  }
+  const sfx = {
+    place(){ tone(560,0.08,'sine',0.16,0); tone(840,0.06,'sine',0.12,0.03); },
+    remove(){ tone(320,0.09,'sine',0.14,0); },
+    aim(){ tone(900,0.045,'square',0.07,0); tone(1250,0.05,'square',0.07,0.05); },
+    cancel(){ tone(420,0.1,'sine',0.13,0); tone(260,0.13,'sine',0.11,0.05); },
+    click(){ tone(620,0.045,'triangle',0.1,0); },
+    fold(){ noiseBurst({duration:0.75, freqStart:3200, freqEnd:500, gain:0.14, type:'bandpass', q:0.9}); },
+    explosion(){
+      noiseBurst({duration:0.45, freqStart:4200, freqEnd:150, gain:0.45, type:'lowpass'});
+      tone(85,0.32,'sine',0.32,0);
+    },
+    hit(){ tone(880,0.12,'triangle',0.18,0.06); tone(1174,0.16,'triangle',0.16,0.14); },
+    turn(){ tone(520,0.08,'sine',0.11,0); tone(660,0.08,'sine',0.09,0.09); },
+    win(){ tone(523,0.16,'triangle',0.2,0); tone(659,0.16,'triangle',0.2,0.15); tone(784,0.24,'triangle',0.22,0.3); }
+  };
+
+  /* ---------------- game state ---------------- */
+  let state, marksArray;
+
+  function freshState(maxFigures, playerNames){
+    return {
+      phase:'config', // config | setup1 | setup2 | battle | gameover
+      maxFigures: maxFigures || DEFAULT_FIGURES,
+      playerNames: playerNames || {1:'Pemain 1', 2:'Pemain 2'},
+      figures:{1:[], 2:[]},
+      bombs:{1:[], 2:[]},
+      turn:1,
+      animating:false,
+      winner:null,
+      pendingBomb:null
+    };
+  }
+  const other = n => n===1?2:1;
+  const pname = n => (state.playerNames && state.playerNames[n]) || ('Pemain '+n);
+
+  function resetGame(){
+    [1,2].forEach(p=>{
+      const group = p===1?leftGroup:rightGroup;
+      (state ? state.figures[p] : []).forEach(f=>group.remove(f.mesh));
+    });
+    if(state && state.pendingBomb){
+      const group = state.turn===1?leftGroup:rightGroup;
+      group.remove(state.pendingBomb.sprite);
+      group.remove(state.pendingBomb.ring);
+    }
+    (marksArray||[]).forEach(m=>scene.remove(m));
+    marksArray = [];
+    leftGroup.rotation.y=0; leftGroup.position.z=0;
+    rightGroup.rotation.y=0; rightGroup.position.z=0;
+    const prevNames = state ? state.playerNames : null;
+    state = freshState(state ? state.maxFigures : DEFAULT_FIGURES, prevNames);
+    document.getElementById('name1Input').value = state.playerNames[1]==='Pemain 1' ? '' : state.playerNames[1];
+    document.getElementById('name2Input').value = state.playerNames[2]==='Pemain 2' ? '' : state.playerNames[2];
+    setControlsAlign(null);
+    updateAll();
+  }
+
+  function clampToSide(side, x, y){
+    const minX = side===1 ? -(HALF_W-PAD) : PAD;
+    const maxX = side===1 ? -PAD : (HALF_W-PAD);
+    const cx = Math.min(Math.max(x,minX),maxX);
+    const maxY = PAPER_H/2 - PAD, minY = -maxY;
+    const cy = Math.min(Math.max(y,minY),maxY);
+    return {x:cx, y:cy};
+  }
+
+  /* ---------------- pointer / raycasting ---------------- */
+  const raycaster = new THREE.Raycaster();
+  function ndcFromEvent(evt){
+    const rect = renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((evt.clientX-rect.left)/rect.width)*2-1,
+      -(((evt.clientY-rect.top)/rect.height)*2-1)
+    );
+  }
+  function raycastPanel(mesh, ndc){
+    raycaster.setFromCamera(ndc, camera);
+    const hits = raycaster.intersectObject(mesh);
+    return hits.length ? hits[0].point : null;
+  }
+
+  let hintTimeout=null;
+  function flashHint(text){
+    const banner=document.getElementById('banner');
+    banner.textContent=text;
+    banner.classList.add('hint');
+    clearTimeout(hintTimeout);
+    hintTimeout=setTimeout(()=>{ banner.classList.remove('hint'); updateBanner(); }, 1300);
+  }
+
+  function handleSetupClick(evt){
+    const player = state.phase==='setup1' ? 1 : 2;
+    const group = player===1 ? leftGroup : rightGroup;
+    const panel = player===1 ? leftPanelMesh : rightPanelMesh;
+    const otherPanel = player===1 ? rightPanelMesh : leftPanelMesh;
+    const ndc = ndcFromEvent(evt);
+
+    raycaster.setFromCamera(ndc, camera);
+    const figMeshes = state.figures[player].map(f=>f.mesh);
+    const figHits = figMeshes.length ? raycaster.intersectObjects(figMeshes) : [];
+    if(figHits.length){
+      const mesh = figHits[0].object;
+      const idx = state.figures[player].findIndex(f=>f.mesh===mesh);
+      if(idx>=0){ group.remove(mesh); state.figures[player].splice(idx,1); sfx.remove(); updateAll(); }
+      return;
+    }
+
+    if(state.figures[player].length >= state.maxFigures) return;
+
+    const point = raycastPanel(panel, ndc);
+    if(!point){
+      if(raycastPanel(otherPanel, ndc)){
+        flashHint(`Sisi itu milik ${pname(other(player))} — taruh stickman-mu di sisi${player===1?' kiri':' kanan'}mu.`);
+      }
+      return;
+    }
+    const {x,y} = clampToSide(player, point.x, point.y);
+    const tooClose = state.figures[player].some(f=>Math.hypot(f.x-x,f.y-y) < MIN_SPACING);
+    if(tooClose) return;
+
+    const accessory = ACCESSORIES[Math.floor(Math.random()*ACCESSORIES.length)];
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: stickFigureTexture({accessory}) }));
+    sprite.position.set(x,y,0.05);
+    sprite.scale.set(0,0,1);
+    group.add(sprite);
+    pop(sprite, 0.6, 220);
+    state.figures[player].push({x,y,mesh:sprite,alive:true,accessory,baseY:y});
+    sfx.place();
+    updateAll();
+  }
+
+  function handleBattleClick(evt){
+    if(state.animating) return;
+    const attacker = state.turn;
+    const panel = attacker===1 ? leftPanelMesh : rightPanelMesh;
+    const otherPanel = attacker===1 ? rightPanelMesh : leftPanelMesh;
+    const ndc = ndcFromEvent(evt);
+    const point = raycastPanel(panel, ndc);
+    if(!point){
+      if(raycastPanel(otherPanel, ndc)){
+        flashHint(`Bom dibidik dari sisimu sendiri (${pname(attacker)})!`);
+      }
+      return;
+    }
+    const {x,y} = clampToSide(attacker, point.x, point.y);
+    setPendingBomb(attacker, x, y);
+  }
+
+  function setPendingBomb(attacker, x, y){
+    const group = attacker===1 ? leftGroup : rightGroup;
+    clearPendingBomb();
+    const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTexture(), transparent:true, opacity:0.85 }));
+    ring.position.set(x,y,0.19);
+    ring.scale.set(0,0,1);
+    group.add(ring);
+    pop(ring, 0.95, 200);
+
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: bombTexture(), transparent:true, opacity:0.95 }));
+    sprite.position.set(x,y,0.21);
+    sprite.scale.set(0,0,1);
+    group.add(sprite);
+    pop(sprite, 0.5, 200);
+
+    state.pendingBomb = {x,y,sprite,ring};
+    sfx.aim();
+    updateAll();
+  }
+
+  function clearPendingBomb(){
+    if(state.pendingBomb){
+      const group = state.turn===1 ? leftGroup : rightGroup;
+      group.remove(state.pendingBomb.sprite);
+      group.remove(state.pendingBomb.ring);
+      state.pendingBomb = null;
+    }
+  }
+
+  function launchPendingBomb(){
+    if(!state.pendingBomb || state.animating) return;
+    const { x, y } = state.pendingBomb;
+    clearPendingBomb();
+    throwBomb(state.turn, x, y);
+  }
+
+  async function throwBomb(attacker, x, y){
+    state.animating = true;
+    updateAll();
+    const group = attacker===1 ? leftGroup : rightGroup;
+    const panelMesh = attacker===1 ? leftPanelMesh : rightPanelMesh;
+
+    const bomb = new THREE.Sprite(new THREE.SpriteMaterial({ map: bombTexture() }));
+    bomb.position.set(x,y,0.2);
+    bomb.scale.set(0.4,0.4,1);
+    group.add(bomb);
+
+    sfx.fold();
+    await animateGroup(group, Math.PI, 0.5, 820, panelMesh);
+    await settleBounce(group);
+    await wait(150);
+
+    const worldPos = new THREE.Vector3();
+    bomb.getWorldPosition(worldPos);
+    group.remove(bomb);
+
+    const defender = other(attacker);
+    const defenderGroup = defender===1 ? leftGroup : rightGroup;
+    let hitFig = null;
+    for(const f of state.figures[defender]){
+      if(!f.alive) continue;
+      if(Math.hypot(f.x-worldPos.x, f.y-worldPos.y) < HIT_RADIUS){ hitFig = f; break; }
+    }
+
+    const mark = placeBombImpact(worldPos.x, worldPos.y);
+    marksArray.push(mark);
+    sfx.explosion();
+
+    state.bombs[attacker].push({ x:worldPos.x, y:worldPos.y, result: hitFig?'hit':'miss' });
+
+    if(hitFig){
+      hitFig.alive = false;
+      hitFig.mesh.material.map = stickFigureTexture({destroyed:true});
+      hitFig.mesh.material.needsUpdate = true;
+      pop(hitFig.mesh, 0.6, 260);
+      microShake(defenderGroup);
+      sfx.hit();
+    }
+    updateHUD();
+
+    await wait(600);
+    await animateGroup(group, 0, 0.5, 720, panelMesh);
+
+    state.animating = false;
+
+    if(hitFig && state.figures[defender].every(f=>!f.alive)){
+      state.phase = 'gameover';
+      state.winner = attacker;
+      sfx.win();
+      celebrate(state.figures[attacker]);
+      spawnConfettiBurst(0);
+      spawnConfettiBurst(350);
+    } else {
+      state.turn = defender;
+      sfx.turn();
+    }
+    updateAll();
+  }
+
+  function onPointerDown(evt){
+    if(state.phase==='setup1' || state.phase==='setup2') handleSetupClick(evt);
+    else if(state.phase==='battle') handleBattleClick(evt);
+  }
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  renderer.domElement.addEventListener('contextmenu', evt=>evt.preventDefault());
+
+  /* ---------------- HUD ---------------- */
+  function statsText(n){
+    if(state.phase==='config') return `— pasukan`;
+    const inSetup = state.phase==='setup1' || state.phase==='setup2';
+    const count = inSetup ? state.figures[n].length : state.figures[n].filter(f=>f.alive).length;
+    const hits = state.bombs[n].filter(b=>b.result==='hit').length;
+    return inSetup ? `${count}/${state.maxFigures} ditempatkan` : `${count}/${state.maxFigures} pasukan · ${hits} poin`;
+  }
+
+  function updateHUD(){
+    document.getElementById('nameLabel1').textContent = pname(1);
+    document.getElementById('nameLabel2').textContent = pname(2);
+    document.getElementById('stats1').textContent = statsText(1);
+    document.getElementById('stats2').textContent = statsText(2);
+    document.getElementById('label1').classList.toggle('active',
+      (state.phase==='setup1') || (state.phase==='battle' && state.turn===1) || (state.phase==='gameover' && state.winner===1));
+    document.getElementById('label2').classList.toggle('active',
+      (state.phase==='setup2') || (state.phase==='battle' && state.turn===2) || (state.phase==='gameover' && state.winner===2));
+  }
+
+  function updateBanner(){
+    const banner = document.getElementById('banner');
+    banner.classList.remove('hint');
+    let text = '';
+    if(state.phase==='config') text = `Isi nama & atur jumlah pasukan per pemain (maks ${MAX_MAX_FIGURES}), lalu mulai.`;
+    else if(state.phase==='setup1') text = `${pname(1)} — klik sisi KIRI untuk menaruh stickman (${state.figures[1].length}/${state.maxFigures})`;
+    else if(state.phase==='setup2') text = `${pname(2)} — klik sisi KANAN untuk menaruh stickman (${state.figures[2].length}/${state.maxFigures})`;
+    else if(state.phase==='battle'){
+      if(state.animating) text = 'Kertas sedang dilipat…';
+      else if(state.pendingBomb) text = `Bom siap dibidik — tekan "🚀 Luncurkan Bom" untuk melipat kertas!`;
+      else text = `Giliran ${pname(state.turn)} — klik/ketuk sisi${state.turn===1?' KIRI':' KANAN'}-mu untuk membidik bom`;
+    }
+    else if(state.phase==='gameover') text = `🏆 ${pname(state.winner)} menang! Semua pasukan ${pname(other(state.winner))} hancur.`;
+    banner.textContent = text;
+  }
+
+  function makeBtn(label, onclick, ghost, sound){
+    const b = document.createElement('button');
+    b.className = 'btn' + (ghost ? ' ghost' : '');
+    b.textContent = label;
+    b.addEventListener('click', ()=>{ (sound||sfx.click)(); onclick(); });
+    return b;
+  }
+
+  function makeLaunchCircle(onclick){
+    const b = document.createElement('button');
+    b.className = 'launch-circle';
+    b.type = 'button';
+    b.innerHTML = '<span class="icon">🚀</span><span class="label">Luncur</span>';
+    b.addEventListener('click', ()=>{ sfx.click(); onclick(); });
+    return b;
+  }
+
+  function makeCancelLink(onclick){
+    const b = document.createElement('button');
+    b.className = 'cancel-link';
+    b.type = 'button';
+    b.textContent = 'Batal';
+    b.addEventListener('click', ()=>{ sfx.cancel(); onclick(); });
+    return b;
+  }
+
+  function setControlsAlign(align){
+    const el = document.getElementById('controls');
+    el.classList.remove('side-left','side-right');
+    if(align==='left') el.classList.add('side-left');
+    else if(align==='right') el.classList.add('side-right');
+  }
+
+  function updateControls(){
+    const el = document.getElementById('controls');
+    el.innerHTML = '';
+    el.classList.remove('stacked');
+    setControlsAlign(null);
+    if(state.phase==='setup1' && state.figures[1].length===state.maxFigures){
+      el.appendChild(makeBtn(`Lanjut ke ${pname(2)} →`, ()=>{ state.phase='setup2'; updateAll(); }));
+    } else if(state.phase==='setup2' && state.figures[2].length===state.maxFigures){
+      el.appendChild(makeBtn('Mulai Pertempuran ⚔️', ()=>{ state.phase='battle'; state.turn=1; updateAll(); }));
+    } else if(state.phase==='battle' && state.pendingBomb && !state.animating){
+      el.classList.add('stacked');
+      setControlsAlign(state.turn===1 ? 'left' : 'right');
+      el.appendChild(makeLaunchCircle(launchPendingBomb));
+      el.appendChild(makeCancelLink(()=>{ clearPendingBomb(); updateAll(); }));
+    } else if(state.phase==='gameover'){
+      el.appendChild(makeBtn('Main Lagi 🔄', resetGame));
+    }
+  }
+
+  function updateConfigPanel(){
+    const panel = document.getElementById('configPanel');
+    panel.hidden = state.phase!=='config';
+    if(state.phase!=='config') return;
+    const stepperEl = document.getElementById('figureStepper');
+    stepperEl.innerHTML = '';
+    const minus = document.createElement('button');
+    minus.className = 'stepper-btn'; minus.textContent = '–'; minus.type = 'button';
+    minus.disabled = state.maxFigures <= MIN_MAX_FIGURES;
+    minus.addEventListener('click', ()=>{ if(state.maxFigures>MIN_MAX_FIGURES){ sfx.click(); state.maxFigures--; updateConfigPanel(); } });
+    const val = document.createElement('span');
+    val.className = 'stepper-value'; val.textContent = state.maxFigures;
+    const plus = document.createElement('button');
+    plus.className = 'stepper-btn'; plus.textContent = '+'; plus.type = 'button';
+    plus.disabled = state.maxFigures >= MAX_MAX_FIGURES;
+    plus.addEventListener('click', ()=>{ if(state.maxFigures<MAX_MAX_FIGURES){ sfx.click(); state.maxFigures++; updateConfigPanel(); } });
+    stepperEl.appendChild(minus); stepperEl.appendChild(val); stepperEl.appendChild(plus);
+  }
+
+  function updateAll(){ updateHUD(); updateBanner(); updateControls(); updateConfigPanel(); }
+
+  document.getElementById('helpBtn').addEventListener('click', ()=>{
+    sfx.click();
+    const panel = document.getElementById('rulesPanel');
+    const btn = document.getElementById('helpBtn');
+    const nowHidden = !panel.hidden;
+    panel.hidden = nowHidden;
+    btn.setAttribute('aria-expanded', String(!nowHidden));
+  });
+  document.getElementById('resetBtn').addEventListener('click', ()=>{ sfx.click(); resetGame(); });
+  document.getElementById('soundBtn').addEventListener('click', ()=>{
+    soundOn = !soundOn;
+    document.getElementById('soundBtn').textContent = soundOn ? '🔊' : '🔇';
+    if(soundOn) sfx.click();
+  });
+
+  document.getElementById('startSetupBtn').addEventListener('click', ()=>{
+    sfx.click();
+    const n1 = document.getElementById('name1Input').value.trim();
+    const n2 = document.getElementById('name2Input').value.trim();
+    state.playerNames[1] = n1 || 'Pemain 1';
+    state.playerNames[2] = n2 || 'Pemain 2';
+    state.phase = 'setup1';
+    updateAll();
+  });
+
+  const fsBtn = document.getElementById('fsBtn');
+  const canFullscreen = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  if(!canFullscreen){ fsBtn.style.display = 'none'; }
+  function tryLockLandscape(){
+    try{
+      if(screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
+    } catch(e){}
+  }
+  fsBtn.addEventListener('click', ()=>{
+    sfx.click();
+    try{
+      if(!document.fullscreenElement && !document.webkitFullscreenElement){
+        const req = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+        const p = req.call(document.documentElement);
+        if(p && p.then) p.then(tryLockLandscape).catch(()=>{});
+        else tryLockLandscape();
+      } else {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        exit.call(document);
+      }
+    } catch(e){}
+  });
+  document.addEventListener('fullscreenchange', ()=>{
+    fsBtn.title = document.fullscreenElement ? 'Keluar layar penuh' : 'Layar penuh';
+  });
+
+  /* ---------------- boot ---------------- */
+  fitCamera();
+  resetGame();
+  renderLoop();
+})();
+</script>
