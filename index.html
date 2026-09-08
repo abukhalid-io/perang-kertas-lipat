@@ -1,8 +1,10 @@
+<meta charset="UTF-8">
 <title>Perang Kertas Lipat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <style>
   :root{
     --paper: #fffdf8;
@@ -40,11 +42,18 @@
     position:absolute; bottom:64px; top:auto; left:50%; right:auto; transform:translateX(-50%);
     display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center;
     max-width:92vw; pointer-events:auto;
-    transition: left .3s ease, right .3s ease, top .3s ease, bottom .3s ease, transform .3s ease;
   }
-  .controls.side-left{ left:26px; right:auto; top:50%; bottom:auto; transform:translateY(-50%); }
-  .controls.side-right{ left:auto; right:26px; top:50%; bottom:auto; transform:translateY(-50%); }
-  .controls.stacked{ flex-direction:column; gap:12px; }
+
+  /* launch buttons live fixed at each player's own side from the start of battle —
+     they only fade in/out in place, never jump to a new position */
+  .launch-dock{
+    position:absolute; top:50%; transform:translateY(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    pointer-events:none; opacity:0; transition:opacity .2s ease;
+  }
+  .launch-dock.left{ left:26px; }
+  .launch-dock.right{ right:26px; }
+  .launch-dock.show{ opacity:1; pointer-events:auto; }
 
   .launch-circle{
     width:66px; height:66px; border-radius:50%; border:none; cursor:pointer;
@@ -105,6 +114,7 @@
   }
   .config-panel[hidden]{ display:none; }
   .config-row{ display:flex; flex-direction:column; gap:5px; }
+  .config-row[hidden]{ display:none; }
   .config-row label{ font-size:12.5px; color:var(--pencil); font-family:'Space Mono',monospace; letter-spacing:.03em; text-transform:uppercase; }
   .config-row input{
     font-family:'Patrick Hand',sans-serif; font-size:16.5px; padding:8px 11px;
@@ -113,6 +123,23 @@
   .config-row input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
   .config-row.stepper-row{ flex-direction:row; align-items:center; justify-content:space-between; }
   .config-row.stepper-row span{ font-size:14.5px; color:var(--ink); }
+
+  .net-status{ font-size:13px; color:var(--pencil); line-height:1.4; }
+  .net-status .ok{ color:#4c8a5e; }
+  .net-status .err{ color:var(--accent); }
+  .room-code{
+    font-family:'Space Mono',monospace; font-size:30px; font-weight:bold; letter-spacing:.12em;
+    text-align:center; background:var(--paper); border:1.5px dashed var(--pencil); border-radius:10px;
+    padding:12px 8px; color:var(--ink); user-select:all;
+  }
+  .code-input{
+    font-family:'Space Mono',monospace; font-size:22px; letter-spacing:.15em; text-align:center;
+    text-transform:uppercase; padding:10px 11px; border:1.5px solid var(--pencil); border-radius:8px;
+    background:var(--paper); color:var(--ink);
+  }
+  .code-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .mode-row{ display:flex; flex-direction:column; gap:8px; }
+  .waiting-line{ font-size:14.5px; color:var(--pencil); text-align:center; padding:6px 0; }
 
   .rules-panel{
     position:absolute; top:60px; left:18px; width:270px;
@@ -127,6 +154,34 @@
 
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+  }
+
+  /* phones in landscape: short viewport height, so shrink & tuck the HUD instead of
+     letting the banner + name row eat a big chunk of the paper */
+  @media (orientation:landscape) and (max-height:520px){
+    .corner-btn{ top:6px; width:24px; height:24px; font-size:11px; }
+    .corner-btn.help{ left:6px; }
+    .corner-btn.sound{ left:34px; }
+    .corner-btn.fullscreen{ right:34px; }
+    .corner-btn.reset{ right:6px; }
+    .side-label{ top:5px; gap:0; }
+    .side-name{ font-size:13.5px; }
+    .side-stats{ font-size:8.5px; }
+    .banner{ top:32px; font-size:11px; padding:3px 12px; max-width:66vw; border-radius:11px; }
+    .rules-panel{ top:56px; left:4px; width:190px; max-height:70vh; overflow:auto; padding:10px 12px; font-size:12px; }
+    .rules-panel h2{ font-size:14px; margin-bottom:5px; }
+    .config-panel{ padding:14px 16px; gap:10px; width:min(88vw,260px); }
+    .launch-dock.left{ left:4px; }
+    .launch-dock.right{ right:4px; }
+    .launch-circle{ width:48px; height:48px; }
+    .launch-circle .icon{ font-size:14px; }
+    .launch-circle .label{ font-size:7px; }
+    .controls{ bottom:8px; }
+
+    /* Reserve real screen margins around the paper itself — top for the corner buttons +
+       name/banner row, sides for the fixed launch buttons — so the HUD never sits on top of
+       the play area (stickmen, aim reticle) no matter where figures are placed. */
+    #canvas-root{ top:58px; left:58px; right:58px; bottom:0; }
   }
 
   .rotate-prompt{ display:none; }
@@ -158,20 +213,24 @@
   <button class="corner-btn fullscreen" id="fsBtn" title="Layar penuh">⛶</button>
   <button class="corner-btn reset" id="resetBtn" title="Main baru">↺</button>
 
+  <div class="config-panel" id="netPanel" hidden></div>
+
   <div class="config-panel" id="configPanel" hidden>
-    <div class="config-row">
-      <label for="name1Input">Nama Pemain 1</label>
+    <div class="config-row" id="name1Row">
+      <label for="name1Input" id="name1Label">Nama Pemain 1</label>
       <input type="text" id="name1Input" maxlength="16" placeholder="Pemain 1" autocomplete="off">
     </div>
-    <div class="config-row">
-      <label for="name2Input">Nama Pemain 2</label>
+    <div class="config-row" id="name2Row">
+      <label for="name2Input" id="name2Label">Nama Pemain 2</label>
       <input type="text" id="name2Input" maxlength="16" placeholder="Pemain 2" autocomplete="off">
     </div>
+    <div class="net-status" id="netStatusLine" hidden></div>
     <div class="config-row stepper-row">
       <span>Jumlah pasukan</span>
       <div class="stepper" id="figureStepper"></div>
     </div>
     <button class="btn" id="startSetupBtn">Mulai Tempatkan Pasukan ⚔️</button>
+    <div class="waiting-line" id="configWaitingLine" hidden></div>
   </div>
 
   <div class="rules-panel" id="rulesPanel" hidden>
@@ -194,6 +253,8 @@
   </div>
 
   <div class="banner" id="banner"></div>
+  <div class="launch-dock left" id="launchDockLeft"></div>
+  <div class="launch-dock right" id="launchDockRight"></div>
   <div class="controls" id="controls"></div>
 </div>
 
@@ -343,6 +404,25 @@
     const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
   }
 
+  function powerupTexture(type, mult){
+    const size=110;
+    const c=document.createElement('canvas'); c.width=c.height=size;
+    const ctx=c.getContext('2d');
+    const cx=size/2, cy=size/2;
+    const color = type==='multi' ? '#5a86a8' : '#d9a441';
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(cx,cy,size*0.42,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#fffdf8'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx,cy,size*0.42,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle = '#fffdf8';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 32px "Space Mono", monospace';
+    ctx.fillText('×'+mult, cx, cy-6);
+    ctx.font = 'bold 11px "Space Mono", monospace';
+    ctx.fillText(type==='multi' ? 'BOM' : 'BESAR', cx, cy+22);
+    const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+  }
+
   function ringTexture(){
     const size=110;
     const c=document.createElement('canvas'); c.width=c.height=size;
@@ -420,7 +500,8 @@
     const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
   }
 
-  function spawnExplosionBurst(x,y){
+  function spawnExplosionBurst(x,y,sizeMult){
+    sizeMult = sizeMult || 1;
     const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map:flashTexture(), transparent:true, depthWrite:false }));
     flash.position.set(x,y,0.15);
     flash.scale.set(0.2,0.2,1);
@@ -428,15 +509,16 @@
     const flashStart = performance.now();
     (function stepFlash(now){
       const t = Math.min(1,(now-flashStart)/320);
-      const s = 0.2 + t*2.6;
+      const s = (0.2 + t*2.6) * sizeMult;
       flash.scale.set(s,s,1);
       flash.material.opacity = 1-t;
       if(t<1) requestAnimationFrame(stepFlash); else scene.remove(flash);
     })(flashStart);
 
-    for(let i=0;i<10;i++){
+    const debrisCount = Math.round(10*Math.min(sizeMult,2));
+    for(let i=0;i<debrisCount;i++){
       const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:debrisTexture(), transparent:true, depthWrite:false }));
-      const sc = 0.14 + Math.random()*0.12;
+      const sc = (0.14 + Math.random()*0.12) * (1 + (sizeMult-1)*0.3);
       spr.scale.set(sc,sc,1);
       spr.position.set(x,y,0.12+Math.random()*0.1);
       scene.add(spr);
@@ -473,29 +555,38 @@
     })();
   }
 
-  function placeBombImpact(x,y){
+  function placeBombImpact(x,y,sizeMult){
+    sizeMult = sizeMult || 1;
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: holeTexture(), transparent:true }));
     spr.position.set(x,y,0.08);
     spr.scale.set(0,0,1);
     scene.add(spr);
-    pop(spr, 0.85, 260);
-    spawnExplosionBurst(x,y);
+    pop(spr, 0.85*sizeMult, 260);
+    spawnExplosionBurst(x,y,sizeMult);
     return spr;
   }
 
-  function celebrate(figures){
+  function celebrate(figures, side){
     const survivors = figures.filter(f=>f.alive);
+    if(!survivors.length) return;
+    // winners parade in a circle around the middle of their own territory, dancing as they go
+    const centerX = side===1 ? -HALF_W/2 : HALF_W/2;
+    const centerY = 0;
+    const radiusX = Math.min(HALF_W/2 - PAD, 4.2);
+    const radiusY = Math.min(PAPER_H/2 - PAD, 4.2);
     survivors.forEach((f,idx)=>{
       f.mesh.material.map = stickFigureTexture({accessory:f.accessory, cheer:true});
       f.mesh.material.needsUpdate = true;
       const owner = state; // capture so the loop stops once resetGame swaps in a fresh state
-      const phaseOffset = idx*0.7;
+      const angleOffset = (idx/survivors.length) * Math.PI*2;
       const start = performance.now();
       function step(now){
         if(state!==owner || state.phase!=='gameover') return;
-        const t = (now-start)/1000 + phaseOffset;
-        f.mesh.position.y = f.baseY + Math.abs(Math.sin(t*3.6))*0.22;
-        f.mesh.material.rotation = Math.sin(t*3.6)*0.22;
+        const t = (now-start)/1000;
+        const angle = angleOffset + t*1.1;
+        f.mesh.position.x = centerX + Math.cos(angle)*radiusX;
+        f.mesh.position.y = centerY + Math.sin(angle)*radiusY + Math.abs(Math.sin(t*6.5))*0.2;
+        f.mesh.material.rotation = Math.sin(t*6.5)*0.25;
         requestAnimationFrame(step);
       }
       requestAnimationFrame(step);
@@ -674,6 +765,7 @@
       tone(85,0.32,'sine',0.32,0);
     },
     hit(){ tone(880,0.12,'triangle',0.18,0.06); tone(1174,0.16,'triangle',0.16,0.14); },
+    bonus(){ tone(700,0.1,'triangle',0.2,0); tone(950,0.12,'triangle',0.18,0.08); tone(1300,0.16,'triangle',0.18,0.17); },
     turn(){ tone(520,0.08,'sine',0.11,0); tone(660,0.08,'sine',0.09,0.09); },
     win(){ tone(523,0.16,'triangle',0.2,0); tone(659,0.16,'triangle',0.2,0.15); tone(784,0.24,'triangle',0.22,0.3); }
   };
@@ -691,7 +783,12 @@
       turn:1,
       animating:false,
       winner:null,
-      pendingBomb:null
+      pendingBomb:null,
+      powerups:{1:null, 2:null},     // active random bonus icon sitting on a side, waiting to be hit
+      nextPower:{1:null, 2:null},    // bonus queued for a player's NEXT turn: {type:'multi'|'size', mult:2|3}
+      turnBombsTotal:1,              // how many bombs the current attacker gets to throw this turn
+      turnBombsThrown:0,
+      turnBombSizeMult:1             // blast/hit-radius multiplier for the current throw
     };
   }
   const other = n => n===1?2:1;
@@ -701,6 +798,7 @@
     [1,2].forEach(p=>{
       const group = p===1?leftGroup:rightGroup;
       (state ? state.figures[p] : []).forEach(f=>group.remove(f.mesh));
+      if(state && state.powerups && state.powerups[p]) group.remove(state.powerups[p].mesh);
     });
     if(state && state.pendingBomb){
       const group = state.turn===1?leftGroup:rightGroup;
@@ -715,7 +813,6 @@
     state = freshState(state ? state.maxFigures : DEFAULT_FIGURES, prevNames);
     document.getElementById('name1Input').value = state.playerNames[1]==='Pemain 1' ? '' : state.playerNames[1];
     document.getElementById('name2Input').value = state.playerNames[2]==='Pemain 2' ? '' : state.playerNames[2];
-    setControlsAlign(null);
     updateAll();
   }
 
@@ -726,6 +823,243 @@
     const maxY = PAPER_H/2 - PAD, minY = -maxY;
     const cy = Math.min(Math.max(y,minY),maxY);
     return {x:cx, y:cy};
+  }
+
+  /* ---------------- random battlefield power-ups ---------------- */
+  // Random "×2"/"×3" icons can appear on the side about to be attacked. Land a bomb
+  // on one and you bank a bonus for YOUR next turn: 'multi' = throw that many bombs
+  // in a row, 'size' = your next single bomb has a bigger blast radius.
+  const POWERUP_SPAWN_CHANCE = 0.35;
+
+  function randomSpotOnSide(side){
+    for(let i=0;i<24;i++){
+      const rawX = side===1 ? -PAD - Math.random()*(HALF_W-2*PAD) : PAD + Math.random()*(HALF_W-2*PAD);
+      const rawY = (Math.random()*2-1) * (PAPER_H/2 - PAD);
+      const {x,y} = clampToSide(side, rawX, rawY);
+      const nearFigure = state.figures[side].some(f=>Math.hypot(f.x-x,f.y-y) < MIN_SPACING);
+      const nearPowerup = state.powerups[side] && Math.hypot(state.powerups[side].x-x, state.powerups[side].y-y) < MIN_SPACING;
+      if(!nearFigure && !nearPowerup) return {x,y};
+    }
+    return null;
+  }
+
+  function spinPowerup(record){
+    const owner = state;
+    const start = performance.now();
+    function step(now){
+      if(state!==owner || state.powerups[record.side]!==record) return;
+      const t = (now-start)/1000;
+      record.mesh.material.rotation = Math.sin(t*1.6)*0.35;
+      const s = 0.55 + Math.sin(t*3)*0.05;
+      record.mesh.scale.set(s,s,1);
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Creates the visual/state side of a spawned power-up from an already-resolved record
+  // (no randomness here) — used both by a real roll and by a remote peer replaying one.
+  function applyPowerupSpawn(record){
+    const group = record.side===1 ? leftGroup : rightGroup;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: powerupTexture(record.type,record.mult), transparent:true }));
+    sprite.position.set(record.x, record.y, 0.09);
+    sprite.scale.set(0,0,1);
+    group.add(sprite);
+    pop(sprite, 0.55, 260);
+    const full = { ...record, mesh:sprite };
+    state.powerups[record.side] = full;
+    setTimeout(()=>spinPowerup(full), 280);
+  }
+
+  // Rolls the dice for a new power-up on `side`, applies it, and RETURNS the resolved
+  // record (or null) so the caller can broadcast exactly what happened to the other device.
+  function trySpawnPowerup(side){
+    if(state.phase!=='battle' || state.winner) return null;
+    if(state.powerups[side]) return null;
+    if(Math.random() > POWERUP_SPAWN_CHANCE) return null;
+    const spot = randomSpotOnSide(side);
+    if(!spot) return null;
+    const type = Math.random()<0.5 ? 'multi' : 'size';
+    const mult = Math.random()<0.5 ? 2 : 3;
+    const record = { type, mult, x:spot.x, y:spot.y, side };
+    applyPowerupSpawn(record);
+    return record;
+  }
+
+  // spawnOverride: omit to roll for real (local/authoritative — the normal path);
+  // pass a record (or null for "no spawn") when replaying an already-resolved turn
+  // from the network, so the remote device never re-rolls its own random numbers.
+  function setTurn(next, spawnOverride){
+    state.turn = next;
+    state.turnBombsTotal = 1;
+    state.turnBombsThrown = 0;
+    state.turnBombSizeMult = 1;
+    const bonus = state.nextPower[next];
+    if(bonus){
+      state.nextPower[next] = null;
+      if(bonus.type==='multi') state.turnBombsTotal = bonus.mult;
+      else state.turnBombSizeMult = bonus.mult;
+    }
+    const targetSide = other(next);
+    if(spawnOverride === undefined) return trySpawnPowerup(targetSide);
+    if(spawnOverride) applyPowerupSpawn(spawnOverride);
+    return spawnOverride;
+  }
+
+  /* ---------------- online multiplayer (PeerJS / WebRTC) ---------------- */
+  // Host is always Player 1, whoever joins a room is always Player 2. Whichever device an
+  // action truly belongs to (by phase/turn) resolves it — including any randomness — and
+  // broadcasts the resolved outcome; the other device only ever *applies* what it's told,
+  // never re-rolls its own dice. That keeps both screens perfectly in sync.
+  let netRole = null;      // null (local hotseat) | 'host' | 'joiner'
+  let myPlayer = null;     // 1 | 2 — only meaningful once netRole is set
+  let peer = null, conn = null;
+  let netStatus = 'idle';  // idle | connecting | connected | closed | error
+  let netErrorMsg = '';
+  let roomCode = '';
+
+  function isOnline(){ return netRole !== null; }
+  function amIPlayer(p){ return !isOnline() || myPlayer === p; }
+  function netSend(msg){ if(conn && conn.open){ try{ conn.send(msg); }catch(e){} } }
+
+  function makeRoomCode(){
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s=''; for(let i=0;i<5;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+
+  function teardownNet(){
+    if(conn){ try{ conn.close(); }catch(e){} conn=null; }
+    if(peer){ try{ peer.destroy(); }catch(e){} peer=null; }
+    netRole=null; myPlayer=null; netStatus='idle'; netErrorMsg=''; roomCode='';
+  }
+
+  function goToMode(){
+    teardownNet();
+    state.phase = 'mode';
+    updateAll();
+  }
+
+  function wireConnection(){
+    netStatus = 'connected';
+    conn.on('data', handleNetMessage);
+    conn.on('close', ()=>{
+      netStatus = 'closed';
+      flashHint('⚠️ Koneksi dengan lawan terputus.');
+      updateAll();
+    });
+    conn.on('error', ()=>{ netStatus='error'; netErrorMsg='Koneksi bermasalah.'; updateAll(); });
+    state.phase = 'config'; // both sides leave the lobby screen the moment the link is up
+    if(netRole==='host'){
+      netSend({t:'welcome', name: state.playerNames[1], maxFigures: state.maxFigures});
+    }
+    updateAll();
+  }
+
+  function ensurePeerLib(){
+    if(typeof Peer === 'undefined'){
+      netStatus = 'error';
+      netErrorMsg = 'Gagal memuat modul jaringan. Cek koneksi internet lalu muat ulang halaman.';
+      updateAll();
+      return false;
+    }
+    return true;
+  }
+
+  function hostCreateRoom(){
+    teardownNet();
+    netRole = 'host'; myPlayer = 1;
+    roomCode = makeRoomCode();
+    netStatus = 'connecting';
+    state.phase = 'host-wait';
+    updateAll();
+    if(!ensurePeerLib()) return;
+    peer = new Peer('pkl-'+roomCode, { debug:0 });
+    peer.on('open', ()=>{ updateAll(); });
+    peer.on('connection', c=>{
+      if(conn){ c.close(); return; }
+      conn = c;
+      conn.on('open', wireConnection);
+    });
+    peer.on('error', err=>{
+      netStatus='error';
+      netErrorMsg = (err && err.type==='unavailable-id') ? 'Kode room bentrok, coba lagi.' : 'Gagal membuat room. Cek koneksi internet.';
+      updateAll();
+    });
+  }
+
+  function joinRoom(code){
+    teardownNet();
+    netRole = 'joiner'; myPlayer = 2;
+    netStatus = 'connecting';
+    state.phase = 'join-enter';
+    updateAll();
+    if(!ensurePeerLib()) return;
+    peer = new Peer({ debug:0 });
+    peer.on('open', ()=>{
+      conn = peer.connect('pkl-'+code, { reliable:true });
+      conn.on('open', ()=>{
+        wireConnection();
+        netSend({t:'hello', name: state.playerNames[2]});
+      });
+      conn.on('error', ()=>{ netStatus='error'; netErrorMsg='Gagal terhubung ke room itu.'; updateAll(); });
+    });
+    peer.on('error', err=>{
+      netStatus='error';
+      netErrorMsg = (err && err.type==='peer-unavailable') ? 'Kode room tidak ditemukan / host belum siap.' : 'Gagal terhubung. Cek koneksi internet.';
+      updateAll();
+    });
+  }
+
+  function handleNetMessage(msg){
+    if(!msg || !msg.t) return;
+    switch(msg.t){
+      case 'hello':
+        state.playerNames[2] = msg.name || 'Pemain 2';
+        updateAll();
+        break;
+      case 'welcome':
+        state.playerNames[1] = msg.name || 'Pemain 1';
+        state.maxFigures = msg.maxFigures;
+        updateAll();
+        break;
+      case 'name':
+        state.playerNames[msg.player] = msg.name;
+        updateAll();
+        break;
+      case 'maxFigures':
+        state.maxFigures = msg.value;
+        updateAll();
+        break;
+      case 'phase':
+        state.phase = msg.phase;
+        updateAll();
+        break;
+      case 'figurePlaced':
+        applyPlaceFigure(msg.player, msg.x, msg.y, msg.accessory);
+        break;
+      case 'figureRemoved':
+        applyRemoveFigure(msg.player, msg.idx);
+        break;
+      case 'battleStart':
+        state.phase = 'battle';
+        setTurn(1, msg.spawn===undefined ? null : msg.spawn);
+        updateAll();
+        break;
+      case 'aim':
+        setPendingBomb(msg.attacker, msg.x, msg.y);
+        break;
+      case 'cancelAim':
+        clearPendingBomb();
+        updateAll();
+        break;
+      case 'throwResult':
+        replayThrow(msg.outcome);
+        break;
+      case 'reset':
+        resetGame();
+        break;
+    }
   }
 
   /* ---------------- pointer / raycasting ---------------- */
@@ -752,9 +1086,33 @@
     hintTimeout=setTimeout(()=>{ banner.classList.remove('hint'); updateBanner(); }, 1300);
   }
 
+  // Mutates + shows a figure from already-resolved values — safe to call for a real local
+  // placement (accessory just rolled) or to replay one a network peer already resolved.
+  function applyPlaceFigure(player, x, y, accessory){
+    const group = player===1 ? leftGroup : rightGroup;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: stickFigureTexture({accessory}) }));
+    sprite.position.set(x,y,0.05);
+    sprite.scale.set(0,0,1);
+    group.add(sprite);
+    pop(sprite, 0.6, 220);
+    state.figures[player].push({x,y,mesh:sprite,alive:true,accessory,baseY:y});
+    sfx.place();
+    updateAll();
+  }
+
+  function applyRemoveFigure(player, idx){
+    const group = player===1 ? leftGroup : rightGroup;
+    const f = state.figures[player][idx];
+    if(!f) return;
+    group.remove(f.mesh);
+    state.figures[player].splice(idx,1);
+    sfx.remove();
+    updateAll();
+  }
+
   function handleSetupClick(evt){
     const player = state.phase==='setup1' ? 1 : 2;
-    const group = player===1 ? leftGroup : rightGroup;
+    if(!amIPlayer(player)) return; // online mode: this side's setup belongs to the other device
     const panel = player===1 ? leftPanelMesh : rightPanelMesh;
     const otherPanel = player===1 ? rightPanelMesh : leftPanelMesh;
     const ndc = ndcFromEvent(evt);
@@ -765,7 +1123,10 @@
     if(figHits.length){
       const mesh = figHits[0].object;
       const idx = state.figures[player].findIndex(f=>f.mesh===mesh);
-      if(idx>=0){ group.remove(mesh); state.figures[player].splice(idx,1); sfx.remove(); updateAll(); }
+      if(idx>=0){
+        applyRemoveFigure(player, idx);
+        if(isOnline()) netSend({t:'figureRemoved', player, idx});
+      }
       return;
     }
 
@@ -783,19 +1144,14 @@
     if(tooClose) return;
 
     const accessory = ACCESSORIES[Math.floor(Math.random()*ACCESSORIES.length)];
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: stickFigureTexture({accessory}) }));
-    sprite.position.set(x,y,0.05);
-    sprite.scale.set(0,0,1);
-    group.add(sprite);
-    pop(sprite, 0.6, 220);
-    state.figures[player].push({x,y,mesh:sprite,alive:true,accessory,baseY:y});
-    sfx.place();
-    updateAll();
+    applyPlaceFigure(player, x, y, accessory);
+    if(isOnline()) netSend({t:'figurePlaced', player, x, y, accessory});
   }
 
   function handleBattleClick(evt){
     if(state.animating) return;
     const attacker = state.turn;
+    if(!amIPlayer(attacker)) return; // online mode: it's not this device's turn
     const panel = attacker===1 ? leftPanelMesh : rightPanelMesh;
     const otherPanel = attacker===1 ? rightPanelMesh : leftPanelMesh;
     const ndc = ndcFromEvent(evt);
@@ -808,6 +1164,7 @@
     }
     const {x,y} = clampToSide(attacker, point.x, point.y);
     setPendingBomb(attacker, x, y);
+    if(isOnline()) netSend({t:'aim', attacker, x, y});
   }
 
   function setPendingBomb(attacker, x, y){
@@ -839,55 +1196,118 @@
     }
   }
 
+  function requestCancelAim(){
+    if(!amIPlayer(state.turn)) return;
+    clearPendingBomb();
+    updateAll();
+    if(isOnline()) netSend({t:'cancelAim'});
+  }
+
   function launchPendingBomb(){
     if(!state.pendingBomb || state.animating) return;
+    if(!amIPlayer(state.turn)) return;
     const { x, y } = state.pendingBomb;
     clearPendingBomb();
     throwBomb(state.turn, x, y);
   }
 
-  async function throwBomb(attacker, x, y){
+  // Mutates `state` from a resolved throw descriptor. Called with isReplay=false right after
+  // the numbers are freshly computed (the acting device); called with isReplay=true on the
+  // other device, which must never re-roll anything — only apply exactly what it was told.
+  function applyThrowOutcome(outcome, isReplay){
+    const { attacker, defender, worldX, worldY, hitIdx, powerupHit, gotBonusFor } = outcome;
+    hitIdx.forEach(i=>{ const f = state.figures[defender][i]; if(f) f.alive = false; });
+    if(powerupHit){
+      const pu = state.powerups[defender];
+      if(pu) (defender===1 ? leftGroup : rightGroup).remove(pu.mesh);
+      state.powerups[defender] = null;
+    }
+    if(gotBonusFor) state.nextPower[gotBonusFor] = { type:powerupHit.type, mult:powerupHit.mult };
+    state.bombs[attacker].push({ x:worldX, y:worldY, result: hitIdx.length ? 'hit' : 'miss' });
+
+    if(outcome.winner){
+      state.phase = 'gameover';
+      state.winner = outcome.winner;
+    } else if(outcome.continueTurn){
+      state.turnBombsThrown = outcome.turnBombsThrown;
+    } else {
+      const override = isReplay ? (outcome.spawnedPowerup===undefined ? null : outcome.spawnedPowerup) : undefined;
+      const resolvedSpawn = setTurn(outcome.nextTurn, override);
+      if(!isReplay) outcome.spawnedPowerup = resolvedSpawn;
+    }
+  }
+
+  // Pure computation (+ the one real RNG roll for a trailing power-up spawn) — only ever
+  // called by the device that owns `attacker`'s turn. Mutates state via applyThrowOutcome
+  // and returns the full descriptor, ready to be broadcast to the other device verbatim.
+  function computeThrowOutcome(attacker, x, y, worldX, worldY){
+    const defender = other(attacker);
+    const sizeMult = state.turnBombSizeMult || 1;
+    const radius = HIT_RADIUS * sizeMult;
+    const hitIdx = [];
+    state.figures[defender].forEach((f,i)=>{ if(f.alive && Math.hypot(f.x-worldX, f.y-worldY) < radius) hitIdx.push(i); });
+
+    let powerupHit = null;
+    const pu = state.powerups[defender];
+    if(pu && Math.hypot(pu.x-worldX, pu.y-worldY) < Math.max(radius, HIT_RADIUS*1.25)){
+      powerupHit = { type:pu.type, mult:pu.mult };
+    }
+    const gotBonusFor = (powerupHit && !state.nextPower[attacker]) ? attacker : null;
+    const willWin = hitIdx.length>0 && state.figures[defender].every((f,i)=> hitIdx.includes(i) || !f.alive);
+
+    const outcome = { attacker, defender, x, y, worldX, worldY, sizeMult, hitIdx, powerupHit, gotBonusFor };
+    if(willWin){
+      outcome.winner = attacker;
+    } else {
+      const thrown = state.turnBombsThrown + 1;
+      if(thrown < state.turnBombsTotal){
+        outcome.continueTurn = true;
+        outcome.turnBombsThrown = thrown;
+      } else {
+        outcome.nextTurn = defender;
+      }
+    }
+    applyThrowOutcome(outcome, false);
+    return outcome;
+  }
+
+  // Purely visual replay of a throw — identical whether this device just computed the
+  // outcome itself or received it from the other device over the network.
+  async function playThrowSequence(outcome){
+    const { attacker, defender, x, y, worldX, worldY, sizeMult, hitIdx, gotBonusFor, powerupHit } = outcome;
     state.animating = true;
     updateAll();
     const group = attacker===1 ? leftGroup : rightGroup;
     const panelMesh = attacker===1 ? leftPanelMesh : rightPanelMesh;
+    const defenderGroup = defender===1 ? leftGroup : rightGroup;
 
     const bomb = new THREE.Sprite(new THREE.SpriteMaterial({ map: bombTexture() }));
     bomb.position.set(x,y,0.2);
-    bomb.scale.set(0.4,0.4,1);
+    bomb.scale.set(0.4*sizeMult,0.4*sizeMult,1);
     group.add(bomb);
 
     sfx.fold();
     await animateGroup(group, Math.PI, 0.5, 820, panelMesh);
     await settleBounce(group);
     await wait(150);
-
-    const worldPos = new THREE.Vector3();
-    bomb.getWorldPosition(worldPos);
     group.remove(bomb);
 
-    const defender = other(attacker);
-    const defenderGroup = defender===1 ? leftGroup : rightGroup;
-    let hitFig = null;
-    for(const f of state.figures[defender]){
-      if(!f.alive) continue;
-      if(Math.hypot(f.x-worldPos.x, f.y-worldPos.y) < HIT_RADIUS){ hitFig = f; break; }
-    }
-
-    const mark = placeBombImpact(worldPos.x, worldPos.y);
+    const mark = placeBombImpact(worldX, worldY, sizeMult);
     marksArray.push(mark);
     sfx.explosion();
 
-    state.bombs[attacker].push({ x:worldPos.x, y:worldPos.y, result: hitFig?'hit':'miss' });
-
-    if(hitFig){
-      hitFig.alive = false;
-      hitFig.mesh.material.map = stickFigureTexture({destroyed:true});
-      hitFig.mesh.material.needsUpdate = true;
-      pop(hitFig.mesh, 0.6, 260);
+    if(hitIdx.length){
+      hitIdx.forEach(i=>{
+        const f = state.figures[defender][i];
+        if(!f) return;
+        f.mesh.material.map = stickFigureTexture({destroyed:true});
+        f.mesh.material.needsUpdate = true;
+        pop(f.mesh, 0.6, 260);
+      });
       microShake(defenderGroup);
       sfx.hit();
     }
+    if(gotBonusFor) sfx.bonus();
     updateHUD();
 
     await wait(600);
@@ -895,18 +1315,43 @@
 
     state.animating = false;
 
-    if(hitFig && state.figures[defender].every(f=>!f.alive)){
-      state.phase = 'gameover';
-      state.winner = attacker;
+    if(outcome.winner){
       sfx.win();
-      celebrate(state.figures[attacker]);
+      celebrate(state.figures[attacker], attacker);
       spawnConfettiBurst(0);
       spawnConfettiBurst(350);
     } else {
-      state.turn = defender;
-      sfx.turn();
+      let hint = null;
+      if(gotBonusFor){
+        hint = `🎁 Bonus ${powerupHit.type==='multi'?'Bom Ganda':'Bom Raksasa'} ×${powerupHit.mult} didapat ${pname(attacker)}! Aktif giliran berikutnya.`;
+      }
+      if(outcome.continueTurn){
+        if(!hint) hint = `💣 Bom lagi! (${outcome.turnBombsThrown}/${state.turnBombsTotal})`;
+      } else {
+        sfx.turn();
+      }
+      if(hint) flashHint(hint);
     }
     updateAll();
+  }
+
+  async function throwBomb(attacker, x, y){
+    // The fold is a clean 180° rotation about the group's own origin, so the landing spot
+    // on the opponent's (untransformed) side is exactly the mirror of the aim point — no
+    // need to wait for the animation to finish before resolving the outcome.
+    const worldX = -x, worldY = y;
+    const outcome = computeThrowOutcome(attacker, x, y, worldX, worldY);
+    if(isOnline()) netSend({t:'throwResult', outcome});
+    await playThrowSequence(outcome);
+  }
+
+  async function replayThrow(outcome){
+    // clear any stale aim reticle from the earlier 'aim' message BEFORE applying the
+    // outcome — applyThrowOutcome may advance state.turn, and clearPendingBomb relies on
+    // state.turn still pointing at the attacker's group to remove the right sprite.
+    clearPendingBomb();
+    applyThrowOutcome(outcome, true);
+    await playThrowSequence(outcome);
   }
 
   function onPointerDown(evt){
@@ -922,7 +1367,10 @@
     const inSetup = state.phase==='setup1' || state.phase==='setup2';
     const count = inSetup ? state.figures[n].length : state.figures[n].filter(f=>f.alive).length;
     const hits = state.bombs[n].filter(b=>b.result==='hit').length;
-    return inSetup ? `${count}/${state.maxFigures} ditempatkan` : `${count}/${state.maxFigures} pasukan · ${hits} poin`;
+    if(inSetup) return `${count}/${state.maxFigures} ditempatkan`;
+    const nb = state.nextPower[n];
+    const bonusTxt = nb ? ` · 🎁 ${nb.type==='multi'?'bom ganda':'bom besar'} ×${nb.mult} siap` : '';
+    return `${count}/${state.maxFigures} pasukan · ${hits} poin${bonusTxt}`;
   }
 
   function updateHUD(){
@@ -946,7 +1394,12 @@
     else if(state.phase==='battle'){
       if(state.animating) text = 'Kertas sedang dilipat…';
       else if(state.pendingBomb) text = `Bom siap dibidik — tekan "🚀 Luncurkan Bom" untuk melipat kertas!`;
-      else text = `Giliran ${pname(state.turn)} — klik/ketuk sisi${state.turn===1?' KIRI':' KANAN'}-mu untuk membidik bom`;
+      else {
+        let bonusTxt = '';
+        if(state.turnBombsTotal>1) bonusTxt = ` · 💣 Bom Ganda (${state.turnBombsThrown+1}/${state.turnBombsTotal})`;
+        else if(state.turnBombSizeMult>1) bonusTxt = ` · 🎯 Bom Raksasa ×${state.turnBombSizeMult}`;
+        text = `Giliran ${pname(state.turn)} — klik/ketuk sisi${state.turn===1?' KIRI':' KANAN'}-mu untuk membidik bom${bonusTxt}`;
+      }
     }
     else if(state.phase==='gameover') text = `🏆 ${pname(state.winner)} menang! Semua pasukan ${pname(other(state.winner))} hancur.`;
     banner.textContent = text;
@@ -978,52 +1431,194 @@
     return b;
   }
 
-  function setControlsAlign(align){
-    const el = document.getElementById('controls');
-    el.classList.remove('side-left','side-right');
-    if(align==='left') el.classList.add('side-left');
-    else if(align==='right') el.classList.add('side-right');
+  function initLaunchDocks(){
+    document.getElementById('launchDockLeft').appendChild(makeLaunchCircle(launchPendingBomb));
+    document.getElementById('launchDockLeft').appendChild(makeCancelLink(requestCancelAim));
+    document.getElementById('launchDockRight').appendChild(makeLaunchCircle(launchPendingBomb));
+    document.getElementById('launchDockRight').appendChild(makeCancelLink(requestCancelAim));
+  }
+
+  function updateLaunchDocks(){
+    const ready = state.phase==='battle' && state.pendingBomb && !state.animating;
+    document.getElementById('launchDockLeft').classList.toggle('show', ready && state.turn===1);
+    document.getElementById('launchDockRight').classList.toggle('show', ready && state.turn===2);
   }
 
   function updateControls(){
     const el = document.getElementById('controls');
     el.innerHTML = '';
-    el.classList.remove('stacked');
-    setControlsAlign(null);
     if(state.phase==='setup1' && state.figures[1].length===state.maxFigures){
-      el.appendChild(makeBtn(`Lanjut ke ${pname(2)} →`, ()=>{ state.phase='setup2'; updateAll(); }));
+      if(amIPlayer(1)){
+        el.appendChild(makeBtn(`Lanjut ke ${pname(2)} →`, ()=>{
+          state.phase='setup2';
+          updateAll();
+          if(isOnline()) netSend({t:'phase', phase:'setup2'});
+        }));
+      } else {
+        el.appendChild(makeWaitLine(`Menunggu ${pname(1)} lanjut...`));
+      }
     } else if(state.phase==='setup2' && state.figures[2].length===state.maxFigures){
-      el.appendChild(makeBtn('Mulai Pertempuran ⚔️', ()=>{ state.phase='battle'; state.turn=1; updateAll(); }));
-    } else if(state.phase==='battle' && state.pendingBomb && !state.animating){
-      el.classList.add('stacked');
-      setControlsAlign(state.turn===1 ? 'left' : 'right');
-      el.appendChild(makeLaunchCircle(launchPendingBomb));
-      el.appendChild(makeCancelLink(()=>{ clearPendingBomb(); updateAll(); }));
+      if(amIPlayer(2)){
+        el.appendChild(makeBtn('Mulai Pertempuran ⚔️', ()=>{
+          state.phase='battle';
+          const spawn = setTurn(1);
+          updateAll();
+          if(isOnline()) netSend({t:'battleStart', spawn: spawn===undefined?null:spawn});
+        }));
+      } else {
+        el.appendChild(makeWaitLine(`Menunggu ${pname(2)} memulai pertempuran...`));
+      }
     } else if(state.phase==='gameover'){
-      el.appendChild(makeBtn('Main Lagi 🔄', resetGame));
+      el.appendChild(makeBtn('Main Lagi 🔄', requestReset));
     }
+    updateLaunchDocks();
+  }
+
+  function makeWaitLine(text){
+    const d = document.createElement('div');
+    d.className = 'waiting-line';
+    d.textContent = text;
+    return d;
+  }
+
+  function requestReset(){
+    if(isOnline()) netSend({t:'reset'});
+    resetGame();
   }
 
   function updateConfigPanel(){
     const panel = document.getElementById('configPanel');
     panel.hidden = state.phase!=='config';
     if(state.phase!=='config') return;
+
+    const name1Row = document.getElementById('name1Row');
+    const name2Row = document.getElementById('name2Row');
+    const name1Label = document.getElementById('name1Label');
+    const name2Label = document.getElementById('name2Label');
+    const statusLine = document.getElementById('netStatusLine');
+    const waitLine = document.getElementById('configWaitingLine');
+    const startBtn = document.getElementById('startSetupBtn');
+
+    if(!isOnline()){
+      name1Row.hidden = false; name2Row.hidden = false;
+      name1Label.textContent = 'Nama Pemain 1';
+      name2Label.textContent = 'Nama Pemain 2';
+      statusLine.hidden = true;
+      waitLine.hidden = true;
+      startBtn.hidden = false;
+    } else if(netRole==='host'){
+      name1Row.hidden = false; name2Row.hidden = true;
+      name1Label.textContent = 'Nama kamu (Pemain 1)';
+      statusLine.hidden = false;
+      statusLine.innerHTML = (netStatus==='connected')
+        ? `<span class="ok">✅ ${pname(2)} terhubung</span>`
+        : 'Menunggu lawan terhubung...';
+      waitLine.hidden = true;
+      startBtn.hidden = netStatus!=='connected';
+    } else {
+      name1Row.hidden = true; name2Row.hidden = false;
+      name2Label.textContent = 'Nama kamu (Pemain 2)';
+      statusLine.hidden = false;
+      statusLine.innerHTML = `Tuan rumah: <strong>${pname(1)}</strong>`;
+      startBtn.hidden = true;
+      waitLine.hidden = false;
+      waitLine.textContent = `Menunggu ${pname(1)} memulai...`;
+    }
+
+    const editable = !isOnline() || netRole==='host';
     const stepperEl = document.getElementById('figureStepper');
     stepperEl.innerHTML = '';
     const minus = document.createElement('button');
     minus.className = 'stepper-btn'; minus.textContent = '–'; minus.type = 'button';
-    minus.disabled = state.maxFigures <= MIN_MAX_FIGURES;
-    minus.addEventListener('click', ()=>{ if(state.maxFigures>MIN_MAX_FIGURES){ sfx.click(); state.maxFigures--; updateConfigPanel(); } });
+    minus.disabled = !editable || state.maxFigures <= MIN_MAX_FIGURES;
+    minus.addEventListener('click', ()=>{
+      if(editable && state.maxFigures>MIN_MAX_FIGURES){
+        sfx.click(); state.maxFigures--; updateConfigPanel();
+        if(isOnline()) netSend({t:'maxFigures', value:state.maxFigures});
+      }
+    });
     const val = document.createElement('span');
     val.className = 'stepper-value'; val.textContent = state.maxFigures;
     const plus = document.createElement('button');
     plus.className = 'stepper-btn'; plus.textContent = '+'; plus.type = 'button';
-    plus.disabled = state.maxFigures >= MAX_MAX_FIGURES;
-    plus.addEventListener('click', ()=>{ if(state.maxFigures<MAX_MAX_FIGURES){ sfx.click(); state.maxFigures++; updateConfigPanel(); } });
+    plus.disabled = !editable || state.maxFigures >= MAX_MAX_FIGURES;
+    plus.addEventListener('click', ()=>{
+      if(editable && state.maxFigures<MAX_MAX_FIGURES){
+        sfx.click(); state.maxFigures++; updateConfigPanel();
+        if(isOnline()) netSend({t:'maxFigures', value:state.maxFigures});
+      }
+    });
     stepperEl.appendChild(minus); stepperEl.appendChild(val); stepperEl.appendChild(plus);
   }
 
-  function updateAll(){ updateHUD(); updateBanner(); updateControls(); updateConfigPanel(); }
+  /* ---------------- mode / room lobby panel ---------------- */
+  let modeSubView = 'root'; // 'root' | 'online'
+
+  function updateNetPanel(){
+    const panel = document.getElementById('netPanel');
+    const show = state.phase==='mode' || state.phase==='host-wait' || state.phase==='join-enter';
+    panel.hidden = !show;
+    if(!show) return;
+    panel.innerHTML = '';
+
+    if(state.phase==='mode'){
+      const title = document.createElement('div');
+      title.style.cssText = "font-family:'Permanent Marker',cursive; font-size:19px; text-align:center;";
+      title.textContent = 'Perang Kertas Lipat';
+      panel.appendChild(title);
+
+      if(modeSubView==='online'){
+        panel.appendChild(makeBtn('🏠 Buat Room', hostCreateRoom));
+        panel.appendChild(makeBtn('🔑 Gabung Room', ()=>{ state.phase='join-enter'; updateAll(); }, true));
+        panel.appendChild(makeBtn('← Kembali', ()=>{ modeSubView='root'; updateAll(); }, true));
+      } else {
+        panel.appendChild(makeBtn('🎮 Main Lokal (1 HP)', ()=>{ teardownNet(); state.phase='config'; updateAll(); }));
+        panel.appendChild(makeBtn('🌐 Main Online (2 HP)', ()=>{ modeSubView='online'; updateAll(); }, true));
+      }
+    } else if(state.phase==='host-wait'){
+      const status = document.createElement('div');
+      status.className = 'net-status';
+      if(netStatus==='error') status.innerHTML = `<span class="err">${netErrorMsg}</span>`;
+      else if(netStatus==='connected') status.innerHTML = `<span class="ok">✅ ${pname(2)} terhubung!</span>`;
+      else status.textContent = 'Menunggu lawan bergabung...';
+      panel.appendChild(status);
+
+      const code = document.createElement('div');
+      code.className = 'room-code';
+      code.textContent = roomCode || '·····';
+      panel.appendChild(code);
+
+      panel.appendChild(makeWaitLine('Kasih tau kode ini ke temanmu buat gabung.'));
+      panel.appendChild(makeBtn('← Batal', goToMode, true));
+    } else if(state.phase==='join-enter'){
+      const row = document.createElement('div');
+      row.className = 'config-row';
+      const label = document.createElement('label');
+      label.textContent = 'Kode Room';
+      const input = document.createElement('input');
+      input.className = 'code-input';
+      input.maxLength = 5;
+      input.placeholder = 'ABCDE';
+      input.id = 'joinCodeInput';
+      row.appendChild(label); row.appendChild(input);
+      panel.appendChild(row);
+
+      const status = document.createElement('div');
+      status.className = 'net-status';
+      if(netStatus==='error') status.innerHTML = `<span class="err">${netErrorMsg}</span>`;
+      else if(netStatus==='connecting') status.textContent = 'Menghubungkan...';
+      panel.appendChild(status);
+
+      panel.appendChild(makeBtn('Gabung', ()=>{
+        const code = input.value.trim().toUpperCase();
+        if(code.length<4){ netStatus='error'; netErrorMsg='Kode belum lengkap.'; updateAll(); return; }
+        joinRoom(code);
+      }));
+      panel.appendChild(makeBtn('← Kembali', goToMode, true));
+    }
+  }
+
+  function updateAll(){ updateHUD(); updateBanner(); updateControls(); updateConfigPanel(); updateNetPanel(); }
 
   document.getElementById('helpBtn').addEventListener('click', ()=>{
     sfx.click();
@@ -1033,7 +1628,7 @@
     panel.hidden = nowHidden;
     btn.setAttribute('aria-expanded', String(!nowHidden));
   });
-  document.getElementById('resetBtn').addEventListener('click', ()=>{ sfx.click(); resetGame(); });
+  document.getElementById('resetBtn').addEventListener('click', ()=>{ sfx.click(); requestReset(); });
   document.getElementById('soundBtn').addEventListener('click', ()=>{
     soundOn = !soundOn;
     document.getElementById('soundBtn').textContent = soundOn ? '🔊' : '🔇';
@@ -1041,13 +1636,30 @@
   });
 
   document.getElementById('startSetupBtn').addEventListener('click', ()=>{
+    if(isOnline() && myPlayer!==1) return; // start is host-only in online mode (button is hidden otherwise anyway)
     sfx.click();
     const n1 = document.getElementById('name1Input').value.trim();
-    const n2 = document.getElementById('name2Input').value.trim();
     state.playerNames[1] = n1 || 'Pemain 1';
-    state.playerNames[2] = n2 || 'Pemain 2';
+    if(!isOnline()){
+      const n2 = document.getElementById('name2Input').value.trim();
+      state.playerNames[2] = n2 || 'Pemain 2';
+    } // in online mode player 2's name is already synced from the network, don't overwrite it
     state.phase = 'setup1';
     updateAll();
+    if(isOnline()) netSend({t:'phase', phase:'setup1'});
+  });
+
+  document.getElementById('name1Input').addEventListener('input', e=>{
+    if(!isOnline() || myPlayer!==1) return;
+    state.playerNames[1] = e.target.value.trim() || 'Pemain 1';
+    netSend({t:'name', player:1, name:state.playerNames[1]});
+    updateHUD();
+  });
+  document.getElementById('name2Input').addEventListener('input', e=>{
+    if(!isOnline() || myPlayer!==2) return;
+    state.playerNames[2] = e.target.value.trim() || 'Pemain 2';
+    netSend({t:'name', player:2, name:state.playerNames[2]});
+    updateHUD();
   });
 
   const fsBtn = document.getElementById('fsBtn');
@@ -1077,8 +1689,11 @@
   });
 
   /* ---------------- boot ---------------- */
+  initLaunchDocks();
   fitCamera();
   resetGame();
+  state.phase = 'mode';
+  updateAll();
   renderLoop();
 })();
 </script>
